@@ -67,6 +67,7 @@ GEM
     jls-grok (0.10.12)
       cabin (>= 0.6.0)
     jls-lumberjack (0.0.19)
+    jmx4r (0.1.4)
     jruby-elasticsearch (0.0.17)
     jruby-httpclient (1.1.1-java)
     jruby-openssl (0.8.7)
@@ -203,6 +204,7 @@ DEPENDENCIES
   insist (= 1.0.0)
   jls-grok (= 0.10.12)
   jls-lumberjack (>= 0.0.19)
+  jmx4r
   jruby-elasticsearch (= 0.0.17)
   jruby-httpclient
   jruby-openssl (= 0.8.7)
