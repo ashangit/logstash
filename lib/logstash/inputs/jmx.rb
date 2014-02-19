@@ -14,7 +14,7 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
 
   # Indicate interval between to jmx metrics retrieval
   # (in s)
-  config :retrieve_interval, :validate => :number, :default => 60
+  config :polling_frequency, :validate => :number, :default => 60
 
   # Indicate number of thread launched to retrieve metrics
   config :nb_thread, :validate => :number, :default => 4
@@ -110,18 +110,19 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
     event['type'] = @type
     number_type = [Fixnum, Bignum, Float]
     boolean_type = [TrueClass, FalseClass]
+    metric_path_substituted = metric_path.gsub(' ','_').gsub('"','')
     if number_type.include?(metric_value.class)
       @logger.debug("The value #{metric_value} is of type number: #{metric_value.class}")
-      event['metric_path'] = metric_path
+      event['metric_path'] = metric_path_substituted
       event['metric_value_number'] = metric_value
     elsif boolean_type.include?(metric_value.class)
       @logger.debug("The value #{metric_value} is of type boolean: #{metric_value.class}")
-      event['metric_path'] = metric_path+"_bool"
+      event['metric_path'] = metric_path_substituted+'_bool'
       event['metric_value_number'] = metric_value ? 1 : 0
     else
       @logger.debug("The value #{metric_value} is not of type number: #{metric_value.class}")
-      event['metric_path'] = metric_path
-      event['metric_value_string'] = metric_value.to_s()
+      event['metric_path'] = metric_path_substituted
+      event['metric_value_string'] = metric_value.to_s
     end
     queue << event
   end
@@ -168,10 +169,10 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
           if jmx_object_name_s.length > 0
             jmx_object_name_s.each do |jmx_object_name|
               if query.has_key?('object_alias')
-                object_name = replace_alias_object(query['object_alias'],jmx_object_name.object_name.toString)
+                object_name = replace_alias_object(query['object_alias'],jmx_object_name.object_name.to_s)
                 @logger.debug("Set object_name to object_alias: #{object_name}")
               else
-                object_name = jmx_object_name.object_name.toString
+                object_name = jmx_object_name.object_name.to_s
                 @logger.debug("Set object_name to jmx object_name: #{object_name}")
               end
 
@@ -191,15 +192,15 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
                       send_event_to_queue(queue, thread_hash_conf['host'], "#{base_metric_path}.#{object_name}.#{attribute}", jmx_attribute_value)
                     end
                   rescue Exception => ex
+                    @logger.warn("Failed retrieving metrics for attribute #{attribute} on object #{jmx_object_name.object_name}")
                     @logger.warn(ex.message)
-                    next
                   end
                 end
               else
                 @logger.debug("No attribute to retrieve define on #{jmx_object_name.object_name}, will retrieve all")
                 jmx_object_name.attributes.each_key do |attribute|
                   begin
-                    jmx_attribute_value = jmx_object_name.send(attribute.snake_case)
+                    jmx_attribute_value = jmx_object_name.send(attribute)
                     if jmx_attribute_value.instance_of? Java::JavaxManagementOpenmbean::CompositeDataSupport
                       @logger.debug('The jmx value is a composite_data one')
                       jmx_attribute_value.each do |jmx_attribute_value_composite|
@@ -211,8 +212,8 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
                       send_event_to_queue(queue, thread_hash_conf['host'], "#{base_metric_path}.#{object_name}.#{jmx_object_name.attributes[attribute]}", jmx_attribute_value)
                     end
                   rescue Exception => ex
+                    @logger.warn("Failed retrieving metrics for attribute #{attribute} on object #{jmx_object_name.object_name}")
                     @logger.warn(ex.message)
-                    next
                   end
                 end
               end
@@ -264,7 +265,7 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
               @queue_conf << conf_hash
             end
           rescue Exception => ex
-            @logger.warn("Issue parsing file #{item}")
+            @logger.warn("Issue parsing file #{file_conf}")
             @logger.warn(ex.message)
             @logger.warn(ex.backtrace.join("\n"))
             next
@@ -277,9 +278,9 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
           delta=delta+1
           sleep(1)
         end
-        wait_time=@retrieve_interval-delta
+        wait_time=@polling_frequency-delta
         if wait_time>0
-          @logger.debug("Wait #{wait_time}s (#{@retrieve_interval}-#{delta}(seconds wait until queue conf empty)) before to launch again a new jmx metrics collection")
+          @logger.debug("Wait #{wait_time}s (#{@polling_frequency}-#{delta}(seconds wait until queue conf empty)) before to launch again a new jmx metrics collection")
           sleep(wait_time)
         else
           @logger.warn("The time taken to retrieve metrics is more important than the retrieve_interval time set.
@@ -292,4 +293,3 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
     end
   end
 end
-
